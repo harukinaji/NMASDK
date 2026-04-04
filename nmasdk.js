@@ -189,6 +189,18 @@
       },
     },
 
+    api: {
+      request(path, options) {
+        const normalized = options || {};
+        return request("API_REQUEST", {
+          path,
+          method: normalized.method || "GET",
+          headers: normalized.headers || {},
+          body: normalized.body
+        });
+      },
+    },
+
     ui: {
       alert(message, options) {
         post("SHOW_ALERT", { message, ...(options || {}) });
