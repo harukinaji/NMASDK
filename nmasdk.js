@@ -1,396 +1,227 @@
-class NajiSDK {
-    constructor() {
-        this.user = null;
-        this.theme = 'light';
-        this.platform = 'web';
-        this.permissions = {};
-        this.wallet = null;
-        this.initialized = false;
-        this.initCallbacks = [];
-        this.pendingRequests = {};
-        this.eventListeners = {
-            'backButtonClicked': [],
-            'themeChanged': [],
-            'permissionChanged': []
-        };
+(function () {
+  if (window.NajiMiniApp) return;
 
-        window.addEventListener('message', this._handleMessage.bind(this));
-        this._postMessage('NAJI_SDK_INIT');
+  const DEFAULT_TARGET = "*";
+  const pending = new Map();
+  const listeners = new Map();
+  let reqCounter = 0;
+  let initData = null;
+  let isReady = false;
 
-        console.log('🚀 Naji SDK v2.1 initialized');
+  function emit(eventName, payload) {
+    const handlers = listeners.get(eventName);
+    if (!handlers) return;
+    handlers.forEach((handler) => {
+      try {
+        handler(payload);
+      } catch (error) {
+        console.error("[NajiMiniApp] listener error:", error);
+      }
+    });
+  }
+
+  function on(eventName, handler) {
+    const handlers = listeners.get(eventName) || new Set();
+    handlers.add(handler);
+    listeners.set(eventName, handlers);
+    return () => off(eventName, handler);
+  }
+
+  function off(eventName, handler) {
+    const handlers = listeners.get(eventName);
+    if (!handlers) return;
+    handlers.delete(handler);
+    if (handlers.size === 0) listeners.delete(eventName);
+  }
+
+  function createReqId() {
+    reqCounter += 1;
+    return "req_" + Date.now() + "_" + reqCounter;
+  }
+
+  function post(type, payload) {
+    if (!window.parent) return;
+    window.parent.postMessage({ type, payload }, DEFAULT_TARGET);
+  }
+
+  function request(type, payload) {
+    return new Promise((resolve, reject) => {
+      const reqId = createReqId();
+      pending.set(reqId, { resolve, reject });
+      post(type, { ...(payload || {}), reqId });
+      setTimeout(() => {
+        const current = pending.get(reqId);
+        if (!current) return;
+        pending.delete(reqId);
+        reject(new Error("Mini App request timeout"));
+      }, 15000);
+    });
+  }
+
+  window.addEventListener("message", (event) => {
+    const data = event.data || {};
+    if (data.type === "NAJI_INIT_DATA") {
+      initData = data;
+      emit("init", data);
+      emit("themeChanged", data.theme);
+      emit("walletChanged", data.wallet || null);
+      return;
     }
 
-    _handleMessage(event) {
-        const data = event.data;
-        if (!data || typeof data !== 'object') return;
-
-        switch (data.type) {
-            case 'NAJI_INIT_DATA':
-                this.user = data.user;
-                this.theme = data.theme || 'light';
-                this.platform = data.platform || 'web';
-                this.permissions = data.permissions || {};
-                this.wallet = data.wallet || null;
-                this.initialized = true;
-
-                console.log('✅ SDK initialized');
-                console.log('📱 Platform:', this.platform);
-                console.log('💼 Wallet:', this.wallet?.connected ? 'Connected' : 'Not connected');
-
-                this.initCallbacks.forEach(cb => {
-                    try {
-                        cb();
-                    } catch (error) {
-                        console.error('Init callback error:', error);
-                    }
-                });
-                this.initCallbacks = [];
-                break;
-
-            case 'NAJI_ASYNC_RESPONSE':
-                const { reqId, result, error } = data;
-                if (this.pendingRequests[reqId]) {
-                    if (error) {
-                        this.pendingRequests[reqId].reject(new Error(error));
-                    } else {
-                        this.pendingRequests[reqId].resolve(result);
-                    }
-                    delete this.pendingRequests[reqId];
-                }
-                break;
-
-            case 'NAJI_EVENT':
-                const { eventName, payload } = data;
-                if (this.eventListeners[eventName]) {
-                    this.eventListeners[eventName].forEach(cb => {
-                        try {
-                            cb(payload);
-                        } catch (error) {
-                            console.error(`Event "${eventName}" handler error:`, error);
-                        }
-                    });
-                }
-                break;
-
-            case 'NAJI_WALLET_UPDATE':
-                // Update wallet state when parent sends wallet update
-                this.wallet = data.wallet;
-                console.log('💼 Wallet state updated:', this.wallet?.connected ? 'Connected' : 'Disconnected');
-                
-                // Trigger wallet change event if listeners are registered
-                if (this.eventListeners['walletChanged']) {
-                    this.eventListeners['walletChanged'].forEach(cb => {
-                        try {
-                            cb(this.wallet);
-                        } catch (error) {
-                            console.error('Wallet change event handler error:', error);
-                        }
-                    });
-                }
-                break;
-        }
+    if (data.type === "NAJI_ASYNC_RESPONSE") {
+      const entry = pending.get(data.reqId);
+      if (!entry) return;
+      pending.delete(data.reqId);
+      if (data.error) {
+        entry.reject(new Error(data.error));
+      } else {
+        entry.resolve(data.result);
+      }
+      return;
     }
 
-    _postMessage(type, payload = {}) {
-        if (window.parent) {
-            window.parent.postMessage({ type, payload }, '*');
-        }
+    if (data.type === "NAJI_EVENT") {
+      emit(data.eventName, data.payload);
+      if (data.eventName === "backButtonClicked") emit("backButtonClicked", data.payload);
+      return;
     }
 
-    _request(type, payload = {}, timeout = 60000) {
-        return new Promise((resolve, reject) => {
-            const reqId = Date.now().toString(36) + Math.random().toString(36).substr(2);
-            this.pendingRequests[reqId] = { resolve, reject };
+    if (data.type === "NAJI_WALLET_UPDATE") {
+      emit("walletChanged", data.wallet || null);
+      emit(data.type, data);
+      return;
+    }
 
-            this._postMessage(type, { ...payload, reqId });
+    if (typeof data.type === "string" && data.type.startsWith("NAJI_")) {
+      emit(data.type, data);
+    }
+  });
 
-            setTimeout(() => {
-                if (this.pendingRequests[reqId]) {
-                    delete this.pendingRequests[reqId];
-                    reject(new Error('Request timeout'));
-                }
-            }, timeout);
+  const sdk = {
+    init() {
+      if (initData) return Promise.resolve(initData);
+      return new Promise((resolve) => {
+        const unsubscribe = on("init", (payload) => {
+          unsubscribe();
+          resolve(payload);
         });
-    }
-
-    onInit(callback) {
-        if (this.initialized) {
-            callback();
-        } else {
-            this.initCallbacks.push(callback);
-        }
-    }
-
-    isInitialized() {
-        return this.initialized;
-    }
+        post("NAJI_SDK_INIT");
+      });
+    },
 
     ready() {
-        this._postMessage('APP_READY');
-    }
+      if (isReady) return;
+      isReady = true;
+      post("APP_READY");
+    },
 
-    getNickname() {
-        return this.user?.username || null;
-    }
+    get initData() {
+      return initData;
+    },
 
-    getUser() {
-        return this.user;
-    }
+    get user() {
+      return initData?.user || null;
+    },
 
-    getSparks() {
-        return this.user?.sparks || 0;
-    }
+    get theme() {
+      return initData?.theme || "light";
+    },
 
-    getColorScheme() {
-        return this.theme;
-    }
+    get platform() {
+      return initData?.platform || "web";
+    },
 
-    onThemeChange(callback) {
-        this.eventListeners['themeChanged'].push(callback);
-    }
+    get permissions() {
+      return initData?.permissions || {};
+    },
+
+    on,
+    off,
+
+    requestContext() {
+      return request("GET_CONTEXT");
+    },
+
+    close() {
+      post("NAJI_CLOSE_APP");
+    },
+
+    expand() {
+      post("SET_FULLSCREEN_APP", { value: true });
+    },
+
+    collapse() {
+      post("SET_FULLSCREEN_APP", { value: false });
+    },
 
     setHeaderColor(color) {
-        this._postMessage('SET_HEADER_COLOR', { color });
-    }
+      post("SET_HEADER_COLOR", { color });
+    },
 
-    setFullscreen(enabled) {
-        this._postMessage('SET_FULLSCREEN_APP', { value: enabled });
-    }
+    backButton: {
+      show() {
+        post("BACK_BUTTON_UPDATE", { visible: true });
+      },
+      hide() {
+        post("BACK_BUTTON_UPDATE", { visible: false });
+      },
+      onClick(handler) {
+        return on("backButtonClicked", handler);
+      },
+    },
 
-    backButton = {
-        show: () => this._postMessage('BACK_BUTTON_UPDATE', { visible: true }),
-        hide: () => this._postMessage('BACK_BUTTON_UPDATE', { visible: false }),
-        onClick: (callback) => this.eventListeners['backButtonClicked'].push(callback),
-        offClick: (callback) => {
-            this.eventListeners['backButtonClicked'] = 
-                this.eventListeners['backButtonClicked'].filter(cb => cb !== callback);
-        }
-    };
+    storage: {
+      get(key) {
+        return request("STORAGE_GET", { key });
+      },
+      set(key, value) {
+        return request("STORAGE_SET", { key, value });
+      },
+      remove(key) {
+        return request("STORAGE_REMOVE", { key });
+      },
+      keys() {
+        return request("STORAGE_KEYS");
+      },
+    },
 
-    openLink(url) {
-        this._postMessage('OPEN_LINK', { url });
-    }
+    ui: {
+      alert(message, options) {
+        post("SHOW_ALERT", { message, ...(options || {}) });
+      },
+      toast(message, type) {
+        return request("SHOW_TOAST", { message, type: type || "info" });
+      },
+      openLink(url) {
+        return request("OPEN_LINK", { url });
+      },
+      copy(text) {
+        return request("CLIPBOARD_WRITE", { text });
+      },
+    },
 
-    showAlert(message, title = null, type = 'info') {
-        this._postMessage('SHOW_ALERT', { message, title, type });
-    }
+    wallet: {
+      getState() {
+        return request("GET_CONTEXT").then((ctx) => ctx.wallet || null);
+      },
+      refresh() {
+        post("NAJI_WALLET_STATE_REQUEST");
+      },
+    },
 
-    async setItem(key, value) {
-        return this._request('STORAGE_SET', { key, value });
-    }
+    payments: {
+      invoice(options) {
+        return request("CREATE_INVOICE_SPARKS", options || {});
+      },
+      crypto(options) {
+        return request("CRYPTO_REQUEST", options || {});
+      },
+    },
 
-    async getItem(key) {
-        return this._request('STORAGE_GET', { key });
-    }
+    ping() {
+      return request("NAJI_SDK_PING");
+    },
+  };
 
-    async removeItem(key) {
-        return this._request('STORAGE_REMOVE', { key });
-    }
-
-    async createInvoice(title, amount, description = '') {
-        return this._request('CREATE_INVOICE_SPARKS', { title, amount, description });
-    }
-
-    isWalletConnected() {
-        return this.wallet?.connected || false;
-    }
-
-    refreshWalletState() {
-        // Request current wallet state from parent
-        this._postMessage('NAJI_WALLET_STATE_REQUEST');
-    }
-
-    async getSolanaAddress() {
-        return this._request('GET_SOLANA_ADDRESS');
-    }
-
-    async getSolanaBalance() {
-        const result = await this._request('GET_SOLANA_BALANCE');
-        return result.balance;
-    }
-
-    async getTokenBalance(tokenMint) {
-        const result = await this._request('GET_TOKEN_BALANCE', { tokenMint });
-        return result.balance;
-    }
-
-    async transferSOL(recipient, amount, memo = '') {
-        if (!this.isWalletConnected()) {
-            throw new Error('Wallet not connected. Please connect your wallet first.');
-        }
-        return this._request('SOLANA_PAYMENT_REQUEST', { 
-            recipient, 
-            amount,
-            tokenMint: 'SOL',
-            memo
-        });
-    }
-
-    async transferToken(recipient, amount, tokenMint, memo = '') {
-        if (!this.isWalletConnected()) {
-            throw new Error('Wallet not connected. Please connect your wallet first.');
-        }
-        return this._request('SOLANA_PAYMENT_REQUEST', { 
-            recipient, 
-            amount,
-            tokenMint,
-            memo
-        });
-    }
-
-    async createToken(config) {
-        if (!this.isWalletConnected()) {
-            throw new Error('Wallet not connected. Please connect your wallet first.');
-        }
-        
-        const { decimals = 9, supply, uri } = config;
-
-        if (!uri) {
-            throw new Error('URI is required. Upload your metadata.json first.');
-        }
-
-        if (!supply || supply <= 0) {
-            throw new Error('Supply must be greater than 0');
-        }
-
-        return this._request('SOLANA_CREATE_TOKEN', { 
-            decimals,
-            supply,
-            uri
-        });
-    }
-
-    async createNFT(config) {
-        if (!this.isWalletConnected()) {
-            throw new Error('Wallet not connected. Please connect your wallet first.');
-        }
-        
-        const { uri } = config;
-
-        if (!uri) {
-            throw new Error('URI is required. Upload your metadata.json first.');
-        }
-
-        return this._request('SOLANA_MINT_NFT', { 
-            uri
-        });
-    }
-
-    async signMessage(message) {
-        return this._request('SOLANA_SIGN_MESSAGE', { message });
-    }
-
-    async executeSmartContract(params) {
-        return this._request('SOLANA_EXECUTE_CONTRACT', params);
-    }
-
-    async requestPayment(recipient, amount, tokenMint = 'SOL', memo = '') {
-        return this._request('SOLANA_PAYMENT_REQUEST', { 
-            recipient, 
-            amount,
-            tokenMint,
-            memo
-        });
-    }
-
-    async mintNFT(uri) {
-        return this._request('SOLANA_MINT_NFT', { uri });
-    }
-
-    hasPermission(permission) {
-        return this.permissions[permission] || false;
-    }
-
-    onPermissionChange(callback) {
-        this.eventListeners['permissionChanged'].push(callback);
-    }
-
-    onWalletChange(callback) {
-        if (!this.eventListeners['walletChanged']) {
-            this.eventListeners['walletChanged'] = [];
-        }
-        this.eventListeners['walletChanged'].push(callback);
-    }
-
-    offWalletChange(callback) {
-        if (this.eventListeners['walletChanged']) {
-            this.eventListeners['walletChanged'] = 
-                this.eventListeners['walletChanged'].filter(cb => cb !== callback);
-        }
-    }
-
-    getPlatform() {
-        return this.platform;
-    }
-
-    isMobile() {
-        return this.platform === 'ios' || this.platform === 'android';
-    }
-
-    isIOS() {
-        return this.platform === 'ios';
-    }
-
-    isAndroid() {
-        return this.platform === 'android';
-    }
-
-    on(eventName, callback) {
-        if (!this.eventListeners[eventName]) {
-            this.eventListeners[eventName] = [];
-        }
-        this.eventListeners[eventName].push(callback);
-    }
-
-    off(eventName, callback) {
-        if (this.eventListeners[eventName]) {
-            this.eventListeners[eventName] = 
-                this.eventListeners[eventName].filter(cb => cb !== callback);
-        }
-    }
-
-    getVersion() {
-        return '2.1.0';
-    }
-
-    debug() {
-        return {
-            version: this.getVersion(),
-            initialized: this.initialized,
-            user: this.user,
-            theme: this.theme,
-            platform: this.platform,
-            permissions: this.permissions,
-            wallet: this.wallet,
-            pendingRequests: Object.keys(this.pendingRequests).length
-        };
-    }
-}
-
-window.formatSolanaAddress = function(address, start = 4, end = 4) {
-    if (!address) return '';
-    return `${address.slice(0, start)}...${address.slice(-end)}`;
-};
-
-window.solToLamports = function(sol) {
-    return sol * 1000000000; 
-
-};
-
-window.lamportsToSol = function(lamports) {
-    return lamports / 1000000000;
-};
-
-window.isValidSolanaAddress = function(address) {
-    if (!address || typeof address !== 'string') return false;
-    if (address.length < 32 || address.length > 44) return false;
-    return /^[1-9A-HJ-NP-Za-km-z]+$/.test(address);
-};
-
-window.NajiApp = new NajiSDK();
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = NajiSDK;
-}
-
-console.log('📱 Naji Mini App SDK v2.1 loaded');
+  window.NajiMiniApp = sdk;
+})();
