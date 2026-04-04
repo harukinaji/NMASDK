@@ -135,6 +135,10 @@
       return initData?.permissions || {};
     },
 
+    get sparks() {
+      return initData?.sparks || { balance: 0 };
+    },
+
     on,
     off,
 
