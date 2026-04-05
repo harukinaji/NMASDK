@@ -7,6 +7,7 @@
   let reqCounter = 0;
   let initData = null;
   let isReady = false;
+  let gamepadsState = [];
 
   function emit(eventName, payload) {
     const handlers = listeners.get(eventName);
@@ -58,13 +59,36 @@
     });
   }
 
+  function setGamepads(nextGamepads) {
+    gamepadsState = Array.isArray(nextGamepads) ? nextGamepads : [];
+    if (initData && typeof initData === "object") {
+      initData = { ...initData, gamepads: gamepadsState };
+    }
+    return gamepadsState;
+  }
+
+  function buildGamepadPayload(payload) {
+    const normalizedPayload = payload || {};
+    const nextGamepads = Array.isArray(normalizedPayload.gamepads) ? setGamepads(normalizedPayload.gamepads) : gamepadsState;
+    return {
+      ...normalizedPayload,
+      gamepads: nextGamepads,
+      primary: normalizedPayload.primary || nextGamepads[0] || null,
+      supported: typeof normalizedPayload.supported === "boolean"
+        ? normalizedPayload.supported
+        : Boolean(initData?.gamepadSupported)
+    };
+  }
+
   window.addEventListener("message", (event) => {
     const data = event.data || {};
     if (data.type === "NAJI_INIT_DATA") {
       initData = data;
+      setGamepads(data.gamepads);
       emit("init", data);
       emit("themeChanged", data.theme);
       emit("walletChanged", data.wallet || null);
+      emit("gamepadsChanged", buildGamepadPayload({ reason: "init", gamepads: data.gamepads, supported: data.gamepadSupported }));
       return;
     }
 
@@ -81,7 +105,10 @@
     }
 
     if (data.type === "NAJI_EVENT") {
-      emit(data.eventName, data.payload);
+      const isGamepadEvent = data.eventName === "gamepadsChanged"
+        || data.eventName === "gamepadConnected"
+        || data.eventName === "gamepadDisconnected";
+      emit(data.eventName, isGamepadEvent ? buildGamepadPayload(data.payload) : data.payload);
       if (data.eventName === "backButtonClicked") emit("backButtonClicked", data.payload);
       return;
     }
@@ -139,11 +166,25 @@
       return initData?.sparks || { balance: 0 };
     },
 
+    get gamepads() {
+      return gamepadsState;
+    },
+
+    get gamepadSupported() {
+      return Boolean(initData?.gamepadSupported);
+    },
+
     on,
     off,
 
     requestContext() {
-      return request("GET_CONTEXT");
+      return request("GET_CONTEXT").then((ctx) => {
+        if (ctx && typeof ctx === "object") {
+          initData = { ...(initData || {}), ...ctx };
+          if (Array.isArray(ctx.gamepads)) setGamepads(ctx.gamepads);
+        }
+        return ctx;
+      });
     },
 
     close() {
@@ -222,6 +263,33 @@
       },
       refresh() {
         post("NAJI_WALLET_STATE_REQUEST");
+      },
+    },
+
+    gamepad: {
+      get supported() {
+        return Boolean(initData?.gamepadSupported);
+      },
+      get state() {
+        return gamepadsState;
+      },
+      get primary() {
+        return gamepadsState[0] || null;
+      },
+      getState() {
+        return request("GET_GAMEPADS").then((gamepads) => setGamepads(gamepads));
+      },
+      refresh() {
+        return request("GET_GAMEPADS").then((gamepads) => setGamepads(gamepads));
+      },
+      onChange(handler) {
+        return on("gamepadsChanged", handler);
+      },
+      onConnect(handler) {
+        return on("gamepadConnected", handler);
+      },
+      onDisconnect(handler) {
+        return on("gamepadDisconnected", handler);
       },
     },
 
