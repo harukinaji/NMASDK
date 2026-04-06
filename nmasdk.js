@@ -9,6 +9,16 @@
   let isReady = false;
   let gamepadsState = [];
 
+  function serializeBody(body) {
+    if (typeof FormData !== "undefined" && body instanceof FormData) {
+      return {
+        __najiBodyType: "form-data",
+        entries: Array.from(body.entries()).map(([key, value]) => ({ key, value }))
+      };
+    }
+    return body;
+  }
+
   function emit(eventName, payload) {
     const handlers = listeners.get(eventName);
     if (!handlers) return;
@@ -237,7 +247,7 @@
           path,
           method: normalized.method || "GET",
           headers: normalized.headers || {},
-          body: normalized.body
+          body: serializeBody(normalized.body)
         });
       },
     },
