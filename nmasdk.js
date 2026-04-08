@@ -1,13 +1,30 @@
 (function () {
   if (window.NajiMiniApp) return;
 
-  const DEFAULT_TARGET = "*";
+  function resolveParentOrigin() {
+    const queryValue = new URLSearchParams(window.location.search).get("__naji_parent_origin");
+    const rawValue = queryValue || document.referrer || "";
+    if (!rawValue) return null;
+    try {
+      const parsed = new URL(rawValue, window.location.href);
+      if (!["http:", "https:", "capacitor:"].includes(parsed.protocol)) {
+        return null;
+      }
+      return parsed.origin;
+    } catch {
+      return null;
+    }
+  }
+
+  const PARENT_ORIGIN = resolveParentOrigin();
+  const DEFAULT_TARGET = PARENT_ORIGIN || "*";
   const pending = new Map();
   const listeners = new Map();
   let reqCounter = 0;
   let initData = null;
   let isReady = false;
   let gamepadsState = [];
+  let orientationState = null;
 
   function serializeBody(body) {
     if (typeof FormData !== "undefined" && body instanceof FormData) {
@@ -77,6 +94,14 @@
     return gamepadsState;
   }
 
+  function setOrientation(nextOrientation) {
+    orientationState = nextOrientation && typeof nextOrientation === "object" ? nextOrientation : null;
+    if (initData && typeof initData === "object") {
+      initData = { ...initData, orientation: orientationState };
+    }
+    return orientationState;
+  }
+
   function buildGamepadPayload(payload) {
     const normalizedPayload = payload || {};
     const nextGamepads = Array.isArray(normalizedPayload.gamepads) ? setGamepads(normalizedPayload.gamepads) : gamepadsState;
@@ -91,13 +116,21 @@
   }
 
   window.addEventListener("message", (event) => {
+    if (window.parent && window.parent !== window && event.source !== window.parent) {
+      return;
+    }
+    if (PARENT_ORIGIN && event.origin !== PARENT_ORIGIN) {
+      return;
+    }
     const data = event.data || {};
     if (data.type === "NAJI_INIT_DATA") {
       initData = data;
       setGamepads(data.gamepads);
+      setOrientation(data.orientation);
       emit("init", data);
       emit("themeChanged", data.theme);
       emit("walletChanged", data.wallet || null);
+      emit("orientationChanged", data.orientation || null);
       emit("gamepadsChanged", buildGamepadPayload({ reason: "init", gamepads: data.gamepads, supported: data.gamepadSupported }));
       return;
     }
@@ -118,12 +151,18 @@
       const isGamepadEvent = data.eventName === "gamepadsChanged"
         || data.eventName === "gamepadConnected"
         || data.eventName === "gamepadDisconnected";
+      if (data.eventName === "orientationChanged") {
+        setOrientation(data.payload);
+      }
       emit(data.eventName, isGamepadEvent ? buildGamepadPayload(data.payload) : data.payload);
       if (data.eventName === "backButtonClicked") emit("backButtonClicked", data.payload);
       return;
     }
 
     if (data.type === "NAJI_WALLET_UPDATE") {
+      if (initData && typeof initData === "object") {
+        initData = { ...initData, wallet: data.wallet || null };
+      }
       emit("walletChanged", data.wallet || null);
       emit(data.type, data);
       return;
@@ -168,6 +207,10 @@
       return initData?.platform || "web";
     },
 
+    get parentOrigin() {
+      return PARENT_ORIGIN;
+    },
+
     get permissions() {
       return initData?.permissions || {};
     },
@@ -184,6 +227,10 @@
       return Boolean(initData?.gamepadSupported);
     },
 
+    get orientation() {
+      return orientationState || initData?.orientation || null;
+    },
+
     on,
     off,
 
@@ -192,6 +239,7 @@
         if (ctx && typeof ctx === "object") {
           initData = { ...(initData || {}), ...ctx };
           if (Array.isArray(ctx.gamepads)) setGamepads(ctx.gamepads);
+          if (ctx.orientation) setOrientation(ctx.orientation);
         }
         return ctx;
       });
@@ -303,6 +351,21 @@
       },
     },
 
+    orientation: {
+      get state() {
+        return orientationState || initData?.orientation || null;
+      },
+      getState() {
+        return request("GET_ORIENTATION").then((orientation) => setOrientation(orientation));
+      },
+      refresh() {
+        return request("GET_ORIENTATION").then((orientation) => setOrientation(orientation));
+      },
+      onChange(handler) {
+        return on("orientationChanged", handler);
+      }
+    },
+
     payments: {
       invoice(options) {
         return request("CREATE_INVOICE_SPARKS", options || {});
@@ -310,6 +373,9 @@
       crypto(options) {
         return request("CRYPTO_REQUEST", options || {});
       },
+      solana(options) {
+        return request("MINIAPP_SOLANA_PAYMENT", options || {});
+      }
     },
 
     ping() {
