@@ -25,6 +25,8 @@
   let isReady = false;
   let gamepadsState = [];
   let orientationState = null;
+  let multiplayerState = null;
+  let voiceState = null;
 
   function serializeBody(body) {
     if (typeof FormData !== "undefined" && body instanceof FormData) {
@@ -102,6 +104,22 @@
     return orientationState;
   }
 
+  function setMultiplayer(nextState) {
+    multiplayerState = nextState && typeof nextState === "object" ? nextState : null;
+    if (initData && typeof initData === "object") {
+      initData = { ...initData, multiplayer: multiplayerState };
+    }
+    return multiplayerState;
+  }
+
+  function setVoice(nextState) {
+    voiceState = nextState && typeof nextState === "object" ? nextState : null;
+    if (initData && typeof initData === "object") {
+      initData = { ...initData, voice: voiceState };
+    }
+    return voiceState;
+  }
+
   function buildGamepadPayload(payload) {
     const normalizedPayload = payload || {};
     const nextGamepads = Array.isArray(normalizedPayload.gamepads) ? setGamepads(normalizedPayload.gamepads) : gamepadsState;
@@ -127,10 +145,15 @@
       initData = data;
       setGamepads(data.gamepads);
       setOrientation(data.orientation);
+       setMultiplayer(data.multiplayer || null);
+       setVoice(data.voice || null);
       emit("init", data);
       emit("themeChanged", data.theme);
       emit("walletChanged", data.wallet || null);
       emit("orientationChanged", data.orientation || null);
+      emit("multiplayerStateChanged", data.multiplayer || null);
+      emit("voiceStateChanged", data.voice || null);
+      emit("voiceParticipantsChanged", data.voice?.participants || []);
       emit("gamepadsChanged", buildGamepadPayload({ reason: "init", gamepads: data.gamepads, supported: data.gamepadSupported }));
       return;
     }
@@ -153,6 +176,16 @@
         || data.eventName === "gamepadDisconnected";
       if (data.eventName === "orientationChanged") {
         setOrientation(data.payload);
+      }
+      if (data.eventName === "multiplayerStateChanged" || data.eventName === "multiplayerMatchFound") {
+        setMultiplayer(data.payload);
+      }
+      if (data.eventName === "voiceStateChanged") {
+        setVoice(data.payload);
+      }
+      if (data.eventName === "voiceParticipantsChanged") {
+        const nextVoiceState = { ...(voiceState || initData?.voice || {}), participants: Array.isArray(data.payload) ? data.payload : [] };
+        setVoice(nextVoiceState);
       }
       emit(data.eventName, isGamepadEvent ? buildGamepadPayload(data.payload) : data.payload);
       if (data.eventName === "backButtonClicked") emit("backButtonClicked", data.payload);
@@ -229,6 +262,14 @@
 
     get orientation() {
       return orientationState || initData?.orientation || null;
+    },
+
+    get multiplayer() {
+      return multiplayerState || initData?.multiplayer || null;
+    },
+
+    get voice() {
+      return voiceState || initData?.voice || null;
     },
 
     on,
@@ -363,6 +404,92 @@
       },
       onChange(handler) {
         return on("orientationChanged", handler);
+      }
+    },
+
+    multiplayer: {
+      get state() {
+        return multiplayerState || initData?.multiplayer || null;
+      },
+      get currentRoom() {
+        return (multiplayerState || initData?.multiplayer || {}).room || null;
+      },
+      get queue() {
+        return (multiplayerState || initData?.multiplayer || {}).queue || null;
+      },
+      getState() {
+        return request("MINIAPP_MULTIPLAYER_GET_STATE").then((state) => setMultiplayer(state));
+      },
+      createRoom(options) {
+        return request("MINIAPP_MULTIPLAYER_CREATE_ROOM", options || {}).then((state) => setMultiplayer(state));
+      },
+      joinRoom(options) {
+        return request("MINIAPP_MULTIPLAYER_JOIN_ROOM", options || {}).then((state) => setMultiplayer(state));
+      },
+      leaveRoom(options) {
+        return request("MINIAPP_MULTIPLAYER_LEAVE_ROOM", options || {}).then((state) => setMultiplayer(state));
+      },
+      joinMatchmaking(options) {
+        return request("MINIAPP_MULTIPLAYER_JOIN_MATCHMAKING", options || {}).then((state) => setMultiplayer(state));
+      },
+      leaveMatchmaking(options) {
+        return request("MINIAPP_MULTIPLAYER_LEAVE_MATCHMAKING", options || {}).then((state) => setMultiplayer(state));
+      },
+      updateState(state, options) {
+        return request("MINIAPP_MULTIPLAYER_UPDATE_STATE", { ...(options || {}), state: state || {} }).then((nextState) => setMultiplayer(nextState));
+      },
+      send(eventName, payload, options) {
+        return request("MINIAPP_MULTIPLAYER_SEND_EVENT", {
+          ...(options || {}),
+          eventName,
+          payload: payload || {}
+        });
+      },
+      onChange(handler) {
+        return on("multiplayerStateChanged", handler);
+      },
+      onMatchFound(handler) {
+        return on("multiplayerMatchFound", handler);
+      },
+      onEvent(handler) {
+        return on("multiplayerEvent", handler);
+      }
+    },
+
+    voice: {
+      get state() {
+        return voiceState || initData?.voice || null;
+      },
+      get participants() {
+        return (voiceState || initData?.voice || {}).participants || [];
+      },
+      getState() {
+        return request("MINIAPP_VOICE_GET_STATE").then((state) => setVoice(state));
+      },
+      join(options) {
+        return request("MINIAPP_VOICE_JOIN", options || {}).then((state) => setVoice(state));
+      },
+      leave() {
+        return request("MINIAPP_VOICE_LEAVE", {}).then((state) => setVoice(state));
+      },
+      setMuted(muted) {
+        return request("MINIAPP_VOICE_SET_MUTED", { muted: !!muted }).then((state) => setVoice(state));
+      },
+      toggleMuted() {
+        const nextMuted = !Boolean((voiceState || initData?.voice || {}).muted);
+        return request("MINIAPP_VOICE_SET_MUTED", { muted: nextMuted }).then((state) => setVoice(state));
+      },
+      onChange(handler) {
+        return on("voiceStateChanged", handler);
+      },
+      onParticipantsChange(handler) {
+        return on("voiceParticipantsChanged", handler);
+      },
+      onParticipantJoined(handler) {
+        return on("voiceParticipantJoined", handler);
+      },
+      onParticipantLeft(handler) {
+        return on("voiceParticipantLeft", handler);
       }
     },
 
