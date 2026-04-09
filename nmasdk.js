@@ -1,9 +1,7 @@
 (function () {
   if (window.NajiMiniApp) return;
 
-  function resolveParentOrigin() {
-    const queryValue = new URLSearchParams(window.location.search).get("__naji_parent_origin");
-    const rawValue = queryValue || document.referrer || "";
+  function parseOriginCandidate(rawValue) {
     if (!rawValue) return null;
     try {
       const parsed = new URL(rawValue, window.location.href);
@@ -16,8 +14,25 @@
     }
   }
 
-  const PARENT_ORIGIN = resolveParentOrigin();
-  const DEFAULT_TARGET = PARENT_ORIGIN || "*";
+  function resolveParentOrigins() {
+    const params = new URLSearchParams(window.location.search);
+    const candidates = [
+      params.get("__naji_parent_origin"),
+      document.referrer,
+      typeof window.location.ancestorOrigins?.[0] === "string" ? window.location.ancestorOrigins[0] : null
+    ];
+    const origins = [];
+    candidates.forEach((candidate) => {
+      const nextOrigin = parseOriginCandidate(candidate);
+      if (nextOrigin && !origins.includes(nextOrigin)) {
+        origins.push(nextOrigin);
+      }
+    });
+    return origins;
+  }
+
+  const PARENT_ORIGINS = resolveParentOrigins();
+  const PARENT_ORIGIN = PARENT_ORIGINS[0] || null;
   const pending = new Map();
   const listeners = new Map();
   let reqCounter = 0;
@@ -71,7 +86,8 @@
 
   function post(type, payload) {
     if (!window.parent) return;
-    window.parent.postMessage({ type, payload }, DEFAULT_TARGET);
+    // Use "*" for delivery; the host validates child origin and source on receive.
+    window.parent.postMessage({ type, payload }, "*");
   }
 
   function request(type, payload) {
@@ -137,7 +153,7 @@
     if (window.parent && window.parent !== window && event.source !== window.parent) {
       return;
     }
-    if (PARENT_ORIGIN && event.origin !== PARENT_ORIGIN) {
+    if (PARENT_ORIGINS.length && !PARENT_ORIGINS.includes(event.origin)) {
       return;
     }
     const data = event.data || {};
