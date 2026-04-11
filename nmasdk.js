@@ -376,6 +376,18 @@
       get(options) {
         return this.list(options);
       },
+      inviteRoom(options) {
+        return request("MINIAPP_CONTACT_INVITE", {
+          intent: "room_invite",
+          ...(options || {})
+        });
+      },
+      share(options) {
+        return request("MINIAPP_SHARE_TO_CONTACT", options || {});
+      },
+      invite(options) {
+        return this.inviteRoom(options);
+      },
     },
 
     ui: {
