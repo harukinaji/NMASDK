@@ -455,8 +455,17 @@
         return request("MINIAPP_MULTIPLAYER_UPDATE_STATE", { ...(options || {}), state: state || {} }).then((nextState) => setMultiplayer(nextState));
       },
       send(eventName, payload, options) {
+        const sendOptions = options || {};
+        if (sendOptions.transient || sendOptions.noAck || sendOptions.fireAndForget) {
+          post("MINIAPP_MULTIPLAYER_SEND_EVENT_FAST", {
+            ...sendOptions,
+            eventName,
+            payload: payload || {}
+          });
+          return Promise.resolve({ ok: true, transient: true, ts: Date.now() });
+        }
         return request("MINIAPP_MULTIPLAYER_SEND_EVENT", {
-          ...(options || {}),
+          ...sendOptions,
           eventName,
           payload: payload || {}
         });
