@@ -203,6 +203,12 @@
         const nextVoiceState = { ...(voiceState || initData?.voice || {}), participants: Array.isArray(data.payload) ? data.payload : [] };
         setVoice(nextVoiceState);
       }
+      if (data.eventName === "launchParamsChanged") {
+        const nextStartParams = data.payload?.startParams || data.payload?.launchParams || null;
+        if (initData && typeof initData === "object") {
+          initData = { ...initData, startParams: nextStartParams, launchParams: nextStartParams };
+        }
+      }
       emit(data.eventName, isGamepadEvent ? buildGamepadPayload(data.payload) : data.payload);
       if (data.eventName === "backButtonClicked") emit("backButtonClicked", data.payload);
       return;
@@ -280,6 +286,10 @@
       return orientationState || initData?.orientation || null;
     },
 
+    get startParams() {
+      return initData?.startParams || initData?.launchParams || null;
+    },
+
     get multiplayer() {
       return multiplayerState || initData?.multiplayer || null;
     },
@@ -354,6 +364,17 @@
           headers: normalized.headers || {},
           body: serializeBody(normalized.body)
         });
+      },
+    },
+
+    contacts: {
+      list(options) {
+        return request("MINIAPP_CONTACTS_GET", options || {}).then((result) => (
+          Array.isArray(result) ? result : (result?.contacts || [])
+        ));
+      },
+      get(options) {
+        return this.list(options);
       },
     },
 
