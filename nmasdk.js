@@ -85,9 +85,13 @@
   }
 
   function post(type, payload) {
+    const msg = { type, payload };
+    if (typeof window.NajiBridge !== "undefined" && window.NajiBridge) {
+      window.NajiBridge.postMessage(JSON.stringify(msg));
+      return;
+    }
     if (!window.parent) return;
-    // Use "*" for delivery; the host validates child origin and source on receive.
-    window.parent.postMessage({ type, payload }, "*");
+    window.parent.postMessage(msg, "*");
   }
 
   function request(type, payload) {
@@ -231,12 +235,36 @@
   const sdk = {
     init() {
       if (initData) return Promise.resolve(initData);
-      return new Promise((resolve) => {
-        const unsubscribe = on("init", (payload) => {
-          unsubscribe();
+      return new Promise((resolve, reject) => {
+        const reqId = createReqId();
+        const unsubscribe = on("init", function handler(payload) {
+          pending.delete(reqId);
+          off("init", handler);
           resolve(payload);
         });
-        post("NAJI_SDK_INIT");
+
+        pending.set(reqId, {
+          resolve(result) {
+            off("init", unsubscribe);
+            pending.delete(reqId);
+            resolve(result);
+          },
+          reject(err) {
+            off("init", unsubscribe);
+            pending.delete(reqId);
+            reject(err);
+          }
+        });
+
+        post("NAJI_SDK_INIT", { reqId });
+
+        setTimeout(() => {
+          const entry = pending.get(reqId);
+          if (!entry) return;
+          pending.delete(reqId);
+          off("init", unsubscribe);
+          reject(new Error("Mini App init timeout — parent did not respond within 15s"));
+        }, 15000);
       });
     },
 
