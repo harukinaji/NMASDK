@@ -42,6 +42,10 @@
   let orientationState = null;
   let multiplayerState = null;
   let voiceState = null;
+  let gyroscopeState = null;
+  let accelerometerState = null;
+  let _debugEnabled = false;
+  const _debugLog = [];
 
   function serializeBody(body) {
     if (typeof FormData !== "undefined" && body instanceof FormData) {
@@ -53,7 +57,16 @@
     return body;
   }
 
+  function _debugLogEntry(msg, data) {
+    if (!_debugEnabled) return;
+    const entry = { ts: Date.now(), msg: msg, data: data ? JSON.parse(JSON.stringify(data)) : null };
+    _debugLog.push(entry);
+    if (_debugLog.length > 200) _debugLog.shift();
+    console.log("[NajiMiniApp]", msg, data || "");
+  }
+
   function emit(eventName, payload) {
+    if (_debugEnabled) _debugLogEntry("emit: " + eventName, payload);
     const handlers = listeners.get(eventName);
     if (!handlers) return;
     handlers.forEach((handler) => {
@@ -212,6 +225,12 @@
         if (initData && typeof initData === "object") {
           initData = { ...initData, startParams: nextStartParams, launchParams: nextStartParams };
         }
+      }
+      if (data.eventName === "gyroscopeChanged") {
+        gyroscopeState = data.payload && typeof data.payload === "object" ? data.payload : null;
+      }
+      if (data.eventName === "accelerometerChanged") {
+        accelerometerState = data.payload && typeof data.payload === "object" ? data.payload : null;
       }
       emit(data.eventName, isGamepadEvent ? buildGamepadPayload(data.payload) : data.payload);
       if (data.eventName === "backButtonClicked") emit("backButtonClicked", data.payload);
@@ -595,6 +614,52 @@
       },
       onParticipantLeft(handler) {
         return on("voiceParticipantLeft", handler);
+      }
+    },
+
+    gyroscope: {
+      get state() {
+        return gyroscopeState || null;
+      },
+      getState() {
+        return request("GYROSCOPE_GET_STATE").then((data) => {
+          if (data && typeof data === "object") {
+            gyroscopeState = data;
+          }
+          return gyroscopeState;
+        });
+      },
+      start() {
+        post("GYROSCOPE_START");
+      },
+      stop() {
+        post("GYROSCOPE_STOP");
+      },
+      onChange(handler) {
+        return on("gyroscopeChanged", handler);
+      }
+    },
+
+    accelerometer: {
+      get state() {
+        return accelerometerState || null;
+      },
+      getState() {
+        return request("ACCELEROMETER_GET_STATE").then((data) => {
+          if (data && typeof data === "object") {
+            accelerometerState = data;
+          }
+          return accelerometerState;
+        });
+      },
+      start() {
+        post("ACCELEROMETER_START");
+      },
+      stop() {
+        post("ACCELEROMETER_STOP");
+      },
+      onChange(handler) {
+        return on("accelerometerChanged", handler);
       }
     },
 
