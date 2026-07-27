@@ -227,6 +227,25 @@
       return;
     }
 
+    if (data.type === "NATIVE_GAMEPADS_UPDATE") {
+      const rawGamepads = Array.isArray(data.gamepads) ? data.gamepads : [];
+      const prevIds = gamepadsState.map(function(g) { return g ? g.id : ""; });
+      const currIds = rawGamepads.map(function(g) { return g && g.id ? g.id : ""; });
+      for (var i = 0; i < rawGamepads.length; i++) {
+        if (prevIds.indexOf(currIds[i]) === -1 && currIds[i]) {
+          emit("gamepadConnected", { gamepad: rawGamepads[i], index: i });
+        }
+      }
+      for (var j = 0; j < gamepadsState.length; j++) {
+        if (gamepadsState[j] && currIds.indexOf(prevIds[j]) === -1) {
+          emit("gamepadDisconnected", { gamepad: gamepadsState[j], index: j });
+        }
+      }
+      setGamepads(rawGamepads);
+      emit("gamepadsChanged", buildGamepadPayload({ reason: "update", gamepads: rawGamepads }));
+      return;
+    }
+
     if (typeof data.type === "string" && data.type.startsWith("NAJI_")) {
       emit(data.type, data);
     }
