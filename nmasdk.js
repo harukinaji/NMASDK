@@ -705,6 +705,15 @@
       }
     },
 
+    camera: {
+      takePhoto() {
+        return request("CAMERA_TAKE_PHOTO");
+      },
+      scanQr() {
+        return request("CAMERA_SCAN_QR");
+      }
+    },
+
     payments: {
       invoice(options) {
         return request("CREATE_INVOICE_SPARKS", options || {});
