@@ -720,6 +720,9 @@
       },
       onFrame(handler) {
         return on("cameraFrame", handler);
+      },
+      startVideo() {
+        return request("CAMERA_START_VIDEO");
       }
     },
 
