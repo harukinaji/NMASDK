@@ -669,6 +669,33 @@
       }
     },
 
+    nfc: {
+      isAvailable() {
+        return request("NFC_IS_AVAILABLE").then((r) => r && r.available);
+      },
+      isEnabled() {
+        return request("NFC_IS_ENABLED").then((r) => r && r.enabled);
+      },
+      read() {
+        return request("NFC_READ");
+      },
+      write(records) {
+        return request("NFC_WRITE", { records: records || [] });
+      },
+      sharePayload(text) {
+        return request("NFC_SHARE_PAYLOAD", { text: text || "" });
+      },
+      stopShare() {
+        post("NFC_STOP_SHARE");
+      },
+      cancel() {
+        post("NFC_CANCEL");
+      },
+      onTagRead(handler) {
+        return on("nfcTagRead", handler);
+      }
+    },
+
     payments: {
       invoice(options) {
         return request("CREATE_INVOICE_SPARKS", options || {});
