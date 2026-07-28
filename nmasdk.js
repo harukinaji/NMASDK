@@ -663,6 +663,12 @@
       }
     },
 
+    vibrator: {
+      vibrate(duration) {
+        post("VIBRATE", { duration: duration || 200 });
+      }
+    },
+
     payments: {
       invoice(options) {
         return request("CREATE_INVOICE_SPARKS", options || {});
