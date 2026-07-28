@@ -705,6 +705,21 @@
       }
     },
 
+    bluetooth: {
+      startScan(options) {
+        return request("BLUETOOTH_START_SCAN", options || {});
+      },
+      stopScan() {
+        post("BLUETOOTH_STOP_SCAN");
+      },
+      connect(deviceId, options) {
+        return request("BLUETOOTH_CONNECT", { deviceId, ...(options || {}) });
+      },
+      sendRaw(deviceId, data) {
+        return request("BLUETOOTH_SEND_RAW", { deviceId, data });
+      },
+    },
+
     camera: {
       takePhoto() {
         return request("CAMERA_TAKE_PHOTO");
