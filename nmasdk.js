@@ -709,14 +709,8 @@
       takePhoto() {
         return request("CAMERA_TAKE_PHOTO");
       },
-      startStream(lens) {
-        return request("CAMERA_START_STREAM", { lens: lens || "back" });
-      },
-      stopStream() {
-        post("CAMERA_STOP_STREAM");
-      },
-      onFrame(handler) {
-        return on("cameraFrame", handler);
+      getUserMedia(constraints) {
+        return navigator.mediaDevices.getUserMedia(constraints || { video: true });
       }
     },
 
