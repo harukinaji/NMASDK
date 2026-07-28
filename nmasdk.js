@@ -709,20 +709,14 @@
       takePhoto() {
         return request("CAMERA_TAKE_PHOTO");
       },
-      scanQr() {
-        return request("CAMERA_SCAN_QR");
-      },
-      startStream() {
-        return request("CAMERA_START_STREAM");
+      startStream(lens) {
+        return request("CAMERA_START_STREAM", { lens: lens || "back" });
       },
       stopStream() {
         post("CAMERA_STOP_STREAM");
       },
       onFrame(handler) {
         return on("cameraFrame", handler);
-      },
-      startVideo() {
-        return request("CAMERA_START_VIDEO");
       }
     },
 
