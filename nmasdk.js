@@ -691,6 +691,15 @@
       cancel() {
         post("NFC_CANCEL");
       },
+      connectIsoDep() {
+        return request("NFC_CONNECT_ISODEP");
+      },
+      transceive(command) {
+        return request("NFC_TRANSCEIVE", { command: command || "" });
+      },
+      disconnect() {
+        post("NFC_DISCONNECT_ISODEP");
+      },
       onTagRead(handler) {
         return on("nfcTagRead", handler);
       }
