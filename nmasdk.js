@@ -711,6 +711,15 @@
       },
       scanQr() {
         return request("CAMERA_SCAN_QR");
+      },
+      startStream() {
+        return request("CAMERA_START_STREAM");
+      },
+      stopStream() {
+        post("CAMERA_STOP_STREAM");
+      },
+      onFrame(handler) {
+        return on("cameraFrame", handler);
       }
     },
 
