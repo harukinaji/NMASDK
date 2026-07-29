@@ -718,6 +718,27 @@
       sendRaw(deviceId, data) {
         return request("BLUETOOTH_SEND_RAW", { deviceId, data });
       },
+      discoverServices(deviceId) {
+        return request("BLUETOOTH_DISCOVER_SERVICES", { deviceId });
+      },
+      subscribe(deviceId, serviceUuid, characteristicUuid) {
+        return request("BLUETOOTH_SUBSCRIBE", { deviceId, serviceUuid, characteristicUuid });
+      },
+      unsubscribe(deviceId, serviceUuid, characteristicUuid) {
+        return request("BLUETOOTH_UNSUBSCRIBE", { deviceId, serviceUuid, characteristicUuid });
+      },
+      readRaw(deviceId, serviceUuid, characteristicUuid) {
+        return request("BLUETOOTH_READ_RAW", { deviceId, serviceUuid, characteristicUuid });
+      },
+      onData(handler) {
+        return on("bluetoothDataReceived", handler);
+      },
+      onDeviceFound(handler) {
+        return on("bluetoothDeviceFound", handler);
+      },
+      onConnectionStateChanged(handler) {
+        return on("bluetoothConnectionStateChanged", handler);
+      },
     },
 
     camera: {
