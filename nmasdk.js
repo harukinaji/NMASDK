@@ -536,10 +536,14 @@
         return request("MINIAPP_MULTIPLAYER_GET_STATE").then((state) => setMultiplayer(state));
       },
       createRoom(options) {
-        return request("MINIAPP_MULTIPLAYER_CREATE_ROOM", options || {}).then((state) => setMultiplayer(state));
+        const o = options || {};
+        const norm = { ...o, max_players: o.max_players ?? o.maxPlayers };
+        return request("MINIAPP_MULTIPLAYER_CREATE_ROOM", norm).then((state) => setMultiplayer(state));
       },
       joinRoom(options) {
-        return request("MINIAPP_MULTIPLAYER_JOIN_ROOM", options || {}).then((state) => setMultiplayer(state));
+        const o = options || {};
+        const roomId = o.room_id || o.roomId || "";
+        return request("MINIAPP_MULTIPLAYER_JOIN_ROOM", { ...o, room_id: roomId }).then((state) => setMultiplayer(state));
       },
       leaveRoom(options) {
         return request("MINIAPP_MULTIPLAYER_LEAVE_ROOM", options || {}).then((state) => setMultiplayer(state));
