@@ -475,8 +475,31 @@
       getState() {
         return request("GET_CONTEXT").then((ctx) => ctx.wallet || null);
       },
+      // Full wallet info (alias of getState for discoverability).
+      getInfo() {
+        return this.getState();
+      },
+      // Just the public address, or null when no wallet is connected.
+      getAddress() {
+        return this.getState().then((w) => (w && w.address ? w.address : null));
+      },
+      // Opens / returns the wallet from the host. Resolves with the wallet
+      // object {address, ...} or null. Emits "walletChanged" on updates.
+      view(options) {
+        return request("NAJI_WALLET_VIEW", options || {}).then((w) => {
+          const wallet = w && typeof w === "object" ? w : null;
+          if (initData && typeof initData === "object") {
+            initData = { ...initData, wallet: wallet };
+          }
+          emit("walletChanged", wallet);
+          return wallet;
+        });
+      },
       refresh() {
         post("NAJI_WALLET_STATE_REQUEST");
+      },
+      onChange(handler) {
+        return on("walletChanged", handler);
       },
     },
 
@@ -763,6 +786,43 @@
       },
       solana(options) {
         return request("MINIAPP_SOLANA_PAYMENT", options || {});
+      },
+      // High-level convenience that routes the request to the right native
+      // handler based on the `currency`:
+      //   - "SOL" or any "SPL-*" symbol  -> MINIAPP_SOLANA_PAYMENT
+      //   - everything else              -> CRYPTO_REQUEST (EVM/off-Solana)
+      // Options:
+      //   amount    number   required (>0)
+      //   currency  string   default "SOL" (alias: symbol)
+      //   recipient string   required wallet address (alias: address)
+      //   label     string   optional memo/title shown by host UI
+      requestPayment(options) {
+        const o = options || {};
+        const currency = String(o.currency || o.symbol || "SOL").toUpperCase();
+        const amount = Number(o.amount);
+        const recipient = String(o.recipient || o.address || "").trim();
+        if (!Number.isFinite(amount) || amount <= 0) {
+          return Promise.reject(new Error("payments.requestPayment: amount must be > 0"));
+        }
+        if (!recipient) {
+          return Promise.reject(new Error("payments.requestPayment: recipient is required"));
+        }
+        if (currency === "SOL" || currency.startsWith("SPL-")) {
+          return request("MINIAPP_SOLANA_PAYMENT", {
+            amount,
+            recipient,
+            symbol: currency,
+            label: o.label || o.memo || o.title || "",
+            ...o
+          });
+        }
+        return request("CRYPTO_REQUEST", {
+          symbol: currency,
+          amount,
+          recipient,
+          label: o.label || o.memo || o.title || "",
+          ...o
+        });
       }
     },
 
