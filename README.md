@@ -9,7 +9,7 @@ Naji Mini Apps SDK — standalone JavaScript library for building mini apps insi
 ### Script tag
 
 ```html
-<script src="https://unpkg.com/naji-miniapp-sdk@latest/nmasdk.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/harukinaji/NMASDK@main/nmasdk.js"></script>
 ```
 
 ### npm
