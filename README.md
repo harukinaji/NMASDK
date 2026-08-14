@@ -128,10 +128,10 @@ await NajiMiniApp.payments.solana({ amount: 1.5, recipient: '...' });
 // Invoice (Sparks)
 await NajiMiniApp.payments.invoice({ amount: 100 });
 
-// Universal — auto-routes based on currency
+// Universal — routes to Solana
 await NajiMiniApp.payments.requestPayment({
   amount: 2,
-  currency: 'SOL',        // 'SOL' or 'SPL-*' → Solana, else → EVM
+  currency: 'SOL',
   recipient: '...',
   label: 'Coffee',
 });
