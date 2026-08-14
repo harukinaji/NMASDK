@@ -781,24 +781,11 @@
       invoice(options) {
         return request("CREATE_INVOICE_SPARKS", options || {});
       },
-      crypto(options) {
-        return request("CRYPTO_REQUEST", options || {});
-      },
       solana(options) {
         return request("MINIAPP_SOLANA_PAYMENT", options || {});
       },
-      // High-level convenience that routes the request to the right native
-      // handler based on the `currency`:
-      //   - "SOL" or any "SPL-*" symbol  -> MINIAPP_SOLANA_PAYMENT
-      //   - everything else              -> CRYPTO_REQUEST (EVM/off-Solana)
-      // Options:
-      //   amount    number   required (>0)
-      //   currency  string   default "SOL" (alias: symbol)
-      //   recipient string   required wallet address (alias: address)
-      //   label     string   optional memo/title shown by host UI
       requestPayment(options) {
         const o = options || {};
-        const currency = String(o.currency || o.symbol || "SOL").toUpperCase();
         const amount = Number(o.amount);
         const recipient = String(o.recipient || o.address || "").trim();
         if (!Number.isFinite(amount) || amount <= 0) {
@@ -807,19 +794,10 @@
         if (!recipient) {
           return Promise.reject(new Error("payments.requestPayment: recipient is required"));
         }
-        if (currency === "SOL" || currency.startsWith("SPL-")) {
-          return request("MINIAPP_SOLANA_PAYMENT", {
-            amount,
-            recipient,
-            symbol: currency,
-            label: o.label || o.memo || o.title || "",
-            ...o
-          });
-        }
-        return request("CRYPTO_REQUEST", {
-          symbol: currency,
+        return request("MINIAPP_SOLANA_PAYMENT", {
           amount,
           recipient,
+          symbol: String(o.currency || o.symbol || "SOL").toUpperCase(),
           label: o.label || o.memo || o.title || "",
           ...o
         });
